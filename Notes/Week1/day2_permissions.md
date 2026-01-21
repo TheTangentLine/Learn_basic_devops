@@ -1,4 +1,5 @@
 **Week 1, Day 2: Permissions (The Gatekeeper)**
+
 In DevOps, "Permission Denied" is the error you will see 50% of the time. You need to understand **Octal Permissions.**
 
 Every file has permissions for 3 groups: **Owner (u), Group (g), Others (o)**. Permissions are numbers:
