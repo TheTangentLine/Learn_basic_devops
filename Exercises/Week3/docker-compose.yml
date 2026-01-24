@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  web:
+    build: .             # Look for Dockerfile in current folder
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis            # Wait for redis to start
+
+  redis:                 # NAME MUST MATCH PYTHON CODE (host='redis')
+    image: redis:alpine
+    volumes:
+      - redis_data:/data # Redis stores data in /data by default
+
+volumes:
+  redis_data:
