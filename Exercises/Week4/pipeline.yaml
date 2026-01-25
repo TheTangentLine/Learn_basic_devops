@@ -1,0 +1,47 @@
+name: Production Pipeline
+
+# 1. Trigger
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  # JOB 1: CI (Integration)
+  test-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies
+        run: npm install || echo "No package.json, skipping install"
+
+      - name: Run Dummy Tests
+        run: echo "Running Tests... passed!"
+
+  # JOB 2: Build (Package)
+  build-image:
+    needs: test-code  # CRITICAL: This links the jobs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # (Real world: Login step would go here)
+      
+      - name: Build Docker Image (Simulation)
+        run: docker build . 
+
+  # JOB 3: Deploy (Release)
+  deploy:
+    needs: build-image # CRITICAL: This links the jobs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Server
+        # We use the github.sha variable to simulate a unique version number
+        run: echo "Deploying version ${{ github.sha }} to Production Server..."
