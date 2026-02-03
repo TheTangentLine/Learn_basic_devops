@@ -56,3 +56,15 @@ terraform apply -auto-approve
    You should see a container named modular_nginx.
 
 **Question:** If you wanted to create a second web server listening on port 9090 (assuming you expose the external port as a variable in the module too), what code would you add to your root main.tf?
+
+**Answer:**
+
+```Terraform
+module "webserver_two" {
+  source = "./modules/webserver"
+
+  container_name = "modular_nginx_2"
+  # Assuming you updated variables.tf to accept this
+  external_port  = 9090
+}
+```
