@@ -39,3 +39,5 @@ Your Task:
 3. Look at the top right of the screen.
 
 **Paste the format of your identity shown in the top right**. (It usually looks like `DevOpsAdmin @ AccountID` or just `DevOpsAdmin`).
+
+**Answer:** `DevOpsAdmin @ <Your-12-Digit-Account-ID>`
