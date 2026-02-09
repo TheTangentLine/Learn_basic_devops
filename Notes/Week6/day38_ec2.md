@@ -2,6 +2,8 @@
 
 **The Scenario:** You have credentials. Now you want a server. In AWS, a server is called an EC2 Instance (Elastic Compute Cloud). We will use Terraform to spawn a real Ubuntu server in the us-east-1 region.
 
+---
+
 **Day 38 Mission: Launching into Orbit**
 
 **1. Create the Directory** Create a new folder `aws-lab`. Inside, create `main.tf`.
