@@ -39,3 +39,5 @@ kubectl exec <POD_NAME> -- env | grep THE_COLOR
 **Your Task:**
 Run the `kubectl exec` command above.
 **What is the output?**
+
+**Answer:** `THE_COLOR=blue`
