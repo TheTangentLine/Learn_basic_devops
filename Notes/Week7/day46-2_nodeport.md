@@ -1,14 +1,13 @@
-**Week 7, Day 46: Services (The Front Door)**
+**Week 7, Day 46-2: NodePort (The Open Window)**
 
-**The Scenario:** You have 3 Pods, but their IP addresses are internal and change every time a Pod is recreated. How does a user reach your app?
-You need a **Service**. A Service is a stable IP and DNS name that sits in front of your Pods and load balances traffic between them.
+**The Scenario:** You have 3 Pods, but their IP addresses are internal and change every time a Pod is recreated. How does a user reach your app from **outside** the cluster? You need a **NodePort** Service. It opens a specific port on every Node in the cluster, so anyone who can reach the Node's IP can hit that port and get routed to your Pods.
 
 ---
 
-**Day 46 Mission: Expose the App**
+**Day 46-2 Mission: Expose the App**
 
-**1. The Manifest (`service.yaml`)**
-Create `service.yaml`. This "selector" tells the service to look for any Pod with the label `app: web`.
+**1. The Manifest (`nodeport-service.yaml`)**
+Create `nodeport-service.yaml`. This "selector" tells the service to look for any Pod with the label `app: web`.
 
 ```YAML
 apiVersion: v1
@@ -28,7 +27,7 @@ spec:
 **2. Apply**
 
 ```Bash
-kubectl apply -f service.yaml
+kubectl apply -f nodeport-service.yaml
 ```
 
 **3. The Minikube Shortcut**
@@ -41,7 +40,7 @@ minikube service my-web-service
 **Your Task:**
 
 1. Run the command. It should open your browser automatically.
-2. In your terminal, `run kubectl get svc`.
+2. In your terminal, run `kubectl get svc`.
 
 **Paste the "PORT(S)" column for `my-web-service`.**
 (It should look like `80:3XXXX/TCP`).

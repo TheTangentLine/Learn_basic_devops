@@ -1,10 +1,10 @@
-**The Cloud Load Balancer (The Public Phone Number)**
+**Week 7, Day 46-3: LoadBalancer (The Public Phone Number)**
 
-**The Scenario:** Our web works perfectly, but it has no EXTERNAL-IP. The public internet cannot reach it. We need to tell our cloud provider (AWS, Google Cloud, etc.) to provision a massive, physical load balancer outside of our cluster to accept public internet traffic and pipe it in. To do this, we create a Service of type LoadBalancer.
+**The Scenario:** Our web works perfectly, but it has no EXTERNAL-IP. The public internet cannot reach it. We need to tell our cloud provider (AWS, Google Cloud, etc.) to provision a massive, physical load balancer outside of our cluster to accept public internet traffic and pipe it in. To do this, we create a Service of type **LoadBalancer**.
 
 ---
 
-**Day 54 Mission: The Cloud Provisioning Test**
+**Day 46-3 Mission: The Cloud Provisioning Test**
 
 **1. The Manifest (`public-lb-service.yaml`)**
 
@@ -25,7 +25,7 @@ spec:
     targetPort: 80
   - port: 443
     targetPort: 443
-  type: LoadBalancer # THE MAGIC WORD: This literally bills your AWS/G CP account!
+  type: LoadBalancer # THE MAGIC WORD: This literally bills your AWS/GCP account!
 ```
 
 **2. The Apply**
