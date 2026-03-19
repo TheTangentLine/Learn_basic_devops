@@ -33,7 +33,7 @@ kubectl get nodes
 minikube stop                  # Pause the cluster (preserves state)
 minikube delete                # Destroy the cluster entirely
 minikube dashboard             # Open the K8s web UI
-minikube addons list           # Show available addons (ingress, metrics-server, etc.)
+minikube addons list           # Show available addons (metrics-server, etc.)
 minikube addons enable <name>  # Enable an addon
 minikube service <svc-name>    # Open a NodePort/LoadBalancer service in your browser
 minikube ip                    # Get the cluster's IP address
@@ -68,8 +68,8 @@ spec:
 
 | Field | What It Does |
 |-------|-------------|
-| `apiVersion` | Tells K8s which API schema to use. `v1` = core. `apps/v1` = deployments. `networking.k8s.io/v1` = ingress. |
-| `kind` | The resource type: Pod, Deployment, Service, ConfigMap, Secret, Ingress, etc. |
+| `apiVersion` | Tells K8s which API schema to use. `v1` = core. `apps/v1` = deployments. `gateway.networking.k8s.io/v1` = Gateway API. |
+| `kind` | The resource type: Pod, Deployment, Service, ConfigMap, Secret, Gateway, HTTPRoute, etc. |
 | `metadata.name` | The unique identifier. Used in `kubectl get`, `kubectl describe`, DNS. |
 | `metadata.labels` | Key-value pairs. Not functional on their own — used by selectors to find this Pod. |
 | `spec.containers[].name` | Each container in the Pod needs a unique name. Shows up in `kubectl logs <pod> -c <container>`. |
@@ -287,50 +287,100 @@ spec:
 - Normal: `nslookup backend-service` -> returns 1 virtual IP (10.96.x.x).
 - Headless: `nslookup db-headless` -> returns N Pod IPs (10.244.0.5, 10.244.0.6, ...).
 
-## 4f. Ingress (HTTP/HTTPS Router)
+## 4f. Gateway API (HTTP/HTTPS/gRPC Router)
 
-Not a Service type — it's a separate resource (`kind: Ingress`). It acts as a smart HTTP router that inspects the URL path or hostname and sends traffic to different internal Services.
+The modern replacement for the deprecated `kind: Ingress` (NGINX Ingress is EOL March 2026). Gateway API uses three resources with clear role separation:
 
-**Requires an Ingress Controller** (like NGINX) to actually execute the rules. The Ingress resource is just the configuration.
+**The 3-resource model:**
+- **GatewayClass** — "Which controller?" (infra team manages)
+- **Gateway** — "Which ports/protocols to listen on?" (cluster operator manages)
+- **HTTPRoute** — "Where does each URL go?" (app developer manages)
 
+**GatewayClass** (which controller to use):
 ```YAML
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
 metadata:
-  name: app-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
+  name: nginx
 spec:
+  controllerName: gateway.nginx.org/nginx-gateway-controller
+```
+
+**Gateway** (the listener):
+```YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: main-gateway
+spec:
+  gatewayClassName: nginx
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      namespaces:
+        from: All
+```
+
+**HTTPRoute** (the routing rules):
+```YAML
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: app-routes
+spec:
+  parentRefs:
+  - name: main-gateway
+  hostnames:
+  - "myapp.local"
   rules:
-  - host: myapp.local              # Match this hostname
-    http:
-      paths:
-      - path: /                    # Route / to frontend
-        pathType: Prefix
-        backend:
-          service:
-            name: frontend-service
-            port:
-              number: 80
-      - path: /api                 # Route /api to backend
-        pathType: Prefix
-        backend:
-          service:
-            name: backend-service
-            port:
-              number: 80
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /api
+    backendRefs:
+    - name: backend-service
+      port: 80
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: frontend-service
+      port: 80
 ```
 
-**`pathType` options:**
-- `Prefix`: Matches the URL prefix (e.g., `/api` matches `/api`, `/api/users`, `/api/v2/data`).
-- `Exact`: Matches the exact URL only (e.g., `/api` matches only `/api`, not `/api/users`).
-- `ImplementationSpecific`: Depends on the Ingress Controller.
+**Path match types:**
+- `PathPrefix`: Matches the URL prefix (e.g., `/api` matches `/api`, `/api/users`).
+- `Exact`: Matches the exact URL only.
 
-**Minikube setup:**
+**Additional match types (not available in old Ingress):**
+- `headers`: Route by HTTP header values.
+- `queryParams`: Route by query string.
+- `method`: Route by HTTP method (GET, POST, etc.).
+
+**Setup:**
 ```Bash
-minikube addons enable ingress                                    # Install NGINX Ingress Controller
-echo "$(minikube ip) myapp.local" | sudo tee -a /etc/hosts       # Map hostname to Minikube IP
+# Install Gateway API CRDs
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+
+# Install NGINX Gateway Fabric controller
+kubectl apply -f https://github.com/nginx/nginx-gateway-fabric/releases/download/v1.6.2/nginx-gateway.yaml
+
+# Local DNS for Minikube
+echo "$(minikube ip) myapp.local" | sudo tee -a /etc/hosts
 ```
+
+**Why Gateway API over old Ingress:**
+
+| Feature | Old Ingress | Gateway API |
+|---------|-------------|-------------|
+| Protocols | HTTP/HTTPS only | HTTP, HTTPS, TCP, UDP, gRPC |
+| Routing | Path and host only | Path, headers, query params, method |
+| Traffic splitting | Not supported | Built-in (canary/blue-green) |
+| Cross-namespace | No | Yes (secure by default) |
+| Role separation | None | GatewayClass / Gateway / Route |
 
 ## Service Types Comparison
 
@@ -341,7 +391,7 @@ echo "$(minikube ip) myapp.local" | sudo tee -a /etc/hosts       # Map hostname 
 | **LoadBalancer** | External via cloud LB | Production public-facing services | Yes (cloud-provisioned) | `type: LoadBalancer` |
 | **ExternalName** | DNS alias | External databases, third-party APIs | No (CNAME only) | `type: ExternalName` + `externalName` |
 | **Headless** | Internal, per-Pod DNS | StatefulSets, individual Pod addressing | No | `clusterIP: None` |
-| **Ingress** | External HTTP/HTTPS | Path/host-based routing, single entry point | Yes (via controller + LB) | `kind: Ingress` + `rules` |
+| **Gateway API** | External HTTP/HTTPS/gRPC | Path/host/header-based routing, single entry point | Yes (via Gateway controller + LB) | `GatewayClass` + `Gateway` + `HTTPRoute` |
 
 ## Traffic Flow
 
@@ -352,7 +402,7 @@ Internet
 LoadBalancer  ──▶  Provisions a cloud LB (public IP)
    │
    ▼
-Ingress  ──▶  Routes by host/path (myapp.com/api -> backend, / -> frontend)
+Gateway  ──▶  Routes by host/path/headers (myapp.com/api -> backend, / -> frontend)
    │
    ├──▶  ClusterIP (frontend-service)  ──▶  Frontend Pods
    │
@@ -634,7 +684,7 @@ roleRef:
 **ClusterRole / ClusterRoleBinding** — same but cluster-wide (all namespaces + non-namespaced resources like Nodes).
 
 **Common verbs:** `get`, `list`, `watch`, `create`, `update`, `patch`, `delete`.
-**Common apiGroups:** `""` (core: pods, services, secrets), `"apps"` (deployments), `"networking.k8s.io"` (ingress, network policies).
+**Common apiGroups:** `""` (core: pods, services, secrets), `"apps"` (deployments), `"gateway.networking.k8s.io"` (gateways, httproutes), `"networking.k8s.io"` (network policies).
 
 **Test permissions:**
 ```Bash
@@ -812,6 +862,180 @@ egress:
     port: 53
 ```
 
+## 8i. Persistent Storage & Volumes
+
+By default, container filesystems are ephemeral — data is lost when the Pod dies. Persistent storage solves this.
+
+**Core concepts:**
+- **PersistentVolume (PV):** A piece of provisioned storage (cluster-wide resource).
+- **PersistentVolumeClaim (PVC):** A Pod's request for storage. Binds to a matching PV.
+- **StorageClass:** Blueprint for dynamic provisioning (auto-creates PVs on demand).
+
+```
+Pod --> PVC ("I need 5Gi") --> PV (actual disk) --> Physical storage (EBS, NFS, local)
+                                    ▲
+                              StorageClass (auto-creates PV if needed)
+```
+
+**Volume types:**
+
+| Type | Lifetime | Use Case |
+|------|----------|----------|
+| `emptyDir` | Dies with Pod | Temp files, caches, shared scratch space |
+| `hostPath` | Tied to Node | Dev/testing only |
+| `persistentVolumeClaim` | Survives restarts | Production databases, uploads |
+
+**Access modes:**
+
+| Mode | Short | Meaning |
+|------|-------|---------|
+| `ReadWriteOnce` | RWO | One Node read-write (most common) |
+| `ReadOnlyMany` | ROX | Many Nodes read-only |
+| `ReadWriteMany` | RWX | Many Nodes read-write (requires NFS/EFS) |
+
+**Reclaim policies:** `Retain` (keep data after PVC deleted — safest) vs `Delete` (auto-delete storage — default for dynamic).
+
+**PVC manifest:**
+```YAML
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: fast-storage
+  resources:
+    requests:
+      storage: 1Gi
+```
+
+**Mount PVC in a Pod:**
+```YAML
+volumeMounts:
+- name: data-vol
+  mountPath: /data
+volumes:
+- name: data-vol
+  persistentVolumeClaim:
+    claimName: app-data
+```
+
+**StatefulSet volumeClaimTemplates** — each replica gets its own PVC:
+```YAML
+volumeClaimTemplates:
+- metadata:
+    name: pg-data
+  spec:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: fast-storage
+    resources:
+      requests:
+        storage: 10Gi
+```
+Creates `pg-data-postgres-0`, `pg-data-postgres-1`, etc. automatically.
+
+**Key commands:**
+```Bash
+kubectl get pv                    # List PersistentVolumes
+kubectl get pvc                   # List PersistentVolumeClaims
+kubectl get storageclass          # List StorageClasses (or 'kubectl get sc')
+kubectl describe pvc <name>       # Binding status, capacity, access modes
+```
+
+## 8j. Key Management
+
+**TLS/SSL Certificates:**
+```Bash
+kubectl create secret tls myapp-tls --cert=tls.crt --key=tls.key
+```
+Use in a Gateway for HTTPS termination via `spec.listeners[].tls.certificateRefs`.
+In production, use **cert-manager** for automatic provisioning and renewal via Let's Encrypt.
+
+**SSH Keys (for private Git repos):**
+```Bash
+kubectl create secret generic git-ssh-key \
+  --from-file=ssh-privatekey=~/.ssh/deploy_key \
+  --type=kubernetes.io/ssh-auth
+```
+Mount with `defaultMode: 0400` (SSH requires strict file permissions).
+
+**API Keys (third-party services):**
+Store in `Opaque` Secret, inject as file mount (more secure than env var — avoids log leaks).
+
+**Encryption at Rest:**
+By default, Secrets are Base64-encoded in etcd, not encrypted. Enable encryption:
+- Self-managed: `EncryptionConfiguration` with `aescbc` provider.
+- AWS EKS: Envelope encryption with AWS KMS.
+- GCP GKE: Application-layer encryption with Cloud KMS.
+
+**Sealed Secrets (GitOps-safe):**
+Bitnami SealedSecrets encrypts Secrets so they can be committed to Git. Only the cluster controller can decrypt.
+```Bash
+kubeseal --format=yaml < secret.yaml > sealed-secret.yaml   # Safe to commit
+kubectl apply -f sealed-secret.yaml                          # Controller decrypts -> creates real Secret
+```
+
+**Key type summary:**
+
+| Key Type | Secret Type | Best Practice |
+|----------|-------------|---------------|
+| TLS certs | `kubernetes.io/tls` | cert-manager + Let's Encrypt |
+| SSH keys | `kubernetes.io/ssh-auth` | File mount, `defaultMode: 0400` |
+| API keys | `Opaque` | File mount (not env var) |
+| Encryption at rest | N/A | KMS on managed clusters |
+| GitOps secrets | `SealedSecret` | Bitnami Sealed Secrets |
+
+## 8k. StatefulSets (Stateful Workloads)
+
+Unlike Deployments (interchangeable Pods), StatefulSets give each Pod a **stable, ordered identity** — essential for databases, message queues, and distributed systems.
+
+**StatefulSet vs Deployment:**
+
+| Feature | Deployment | StatefulSet |
+|---------|-----------|-------------|
+| Pod names | Random (`nginx-7c989d-abc1`) | Ordered (`postgres-0`, `postgres-1`) |
+| Identity | Interchangeable | Sticky — survives restarts |
+| Creation order | Simultaneous | Sequential (0, then 1, then 2) |
+| Deletion order | Simultaneous | Reverse (2, then 1, then 0) |
+| Storage | Shared or none | Each Pod gets its own PVC |
+| DNS | No per-Pod DNS | Stable: `<pod>.<headless-svc>.<ns>.svc.cluster.local` |
+
+**The three guarantees:**
+1. **Stable network identity** — `postgres-0.db-headless.default.svc.cluster.local` never changes
+2. **Stable persistent storage** — each Pod's PVC survives restarts and even StatefulSet deletion
+3. **Ordered lifecycle** — Pods wait for the previous one to be Running before starting
+
+**Key manifest fields:**
+
+| Field | What It Does |
+|-------|-------------|
+| `serviceName` | Required. Links to a headless Service for DNS. |
+| `podManagementPolicy` | `OrderedReady` (default, sequential) or `Parallel` (all at once) |
+| `updateStrategy.type` | `RollingUpdate` (reverse order, one at a time) or `OnDelete` (manual) |
+| `updateStrategy.rollingUpdate.partition` | Only update Pods with index >= partition value |
+| `volumeClaimTemplates` | Auto-create one PVC per Pod (`<name>-<statefulset>-<index>`) |
+
+**Data synchronization patterns:**
+
+| Pattern | When to Use | Who Manages It |
+|---------|-------------|----------------|
+| Init Container | Bootstrap new replica with full data copy (`pg_basebackup`) | You (scripts) |
+| Sidecar | Continuous streaming for DBs without built-in replication | You (custom agent) |
+| Built-in Streaming | PostgreSQL WAL, MySQL binlog | You (DB config) |
+| Operator | Production — automated replication, failover, backups | The Operator |
+
+Popular operators: **CloudNativePG** (PostgreSQL), **Strimzi** (Kafka), **Percona** (MySQL/MongoDB).
+
+**Key commands:**
+```Bash
+kubectl get statefulsets                # List StatefulSets (or 'kubectl get sts')
+kubectl describe statefulset <name>     # Detailed info with events
+kubectl scale statefulset <name> --replicas=5   # Scale up (new Pods created in order)
+kubectl rollout status statefulset <name>       # Watch rolling update progress
+kubectl delete statefulset <name> --cascade=orphan  # Delete StatefulSet but keep Pods running
+```
+
 ---
 
 # 9. KUBECTL COMMAND REFERENCE
@@ -825,6 +1049,7 @@ egress:
 | `kubectl create configmap <name> --from-literal=K=V` | Create a ConfigMap from CLI |
 | `kubectl create secret generic <name> --from-literal=K=V` | Create a Secret from CLI |
 | `kubectl create secret generic <name> --from-file=<path>` | Create a Secret from a file |
+| `kubectl create secret tls <name> --cert=<crt> --key=<key>` | Create a TLS Secret |
 
 ## Inspect
 
@@ -839,8 +1064,14 @@ egress:
 | `kubectl get pods -w` | Watch for real-time changes |
 | `kubectl get svc` | List Services |
 | `kubectl get deployments` | List Deployments |
+| `kubectl get statefulsets` | List StatefulSets (or `kubectl get sts`) |
 | `kubectl get rs` | List ReplicaSets |
-| `kubectl get ingress` | List Ingress resources |
+| `kubectl get gateways` | List Gateway resources |
+| `kubectl get httproutes` | List HTTPRoute resources |
+| `kubectl get gatewayclass` | List GatewayClass resources |
+| `kubectl get pv` | List PersistentVolumes |
+| `kubectl get pvc` | List PersistentVolumeClaims |
+| `kubectl get storageclass` | List StorageClasses |
 | `kubectl get hpa` | List Horizontal Pod Autoscalers |
 | `kubectl get configmaps` | List ConfigMaps |
 | `kubectl get secrets` | List Secrets |
@@ -883,5 +1114,5 @@ egress:
 | `minikube dashboard` | Open K8s web UI |
 | `minikube service <svc>` | Open a Service in browser |
 | `minikube ip` | Get the cluster IP |
-| `minikube addons enable ingress` | Enable NGINX Ingress Controller |
+| `kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml` | Install Gateway API CRDs |
 | `minikube addons enable metrics-server` | Enable metrics for HPA |

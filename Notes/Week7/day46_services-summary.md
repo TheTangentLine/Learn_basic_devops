@@ -11,7 +11,7 @@
 | **LoadBalancer** | External via cloud LB | Production public-facing services on AWS/GCP/Azure | Yes (cloud-provisioned IP or URL) | `type: LoadBalancer` |
 | **ExternalName** | DNS alias | Mapping an internal name to an external hostname (e.g., RDS) | No (just a CNAME) | `type: ExternalName` + `externalName: ...` |
 | **Headless** | Internal, per-Pod DNS | StatefulSets needing individual Pod addresses | No | `clusterIP: None` |
-| **Ingress** | External HTTP/HTTPS | Path/host-based routing to multiple Services via one entry point | Yes (via Ingress Controller + LB) | `kind: Ingress` + rules |
+| **Gateway API** | External HTTP/HTTPS/gRPC | Path/host/header-based routing to multiple Services via one entry point | Yes (via Gateway controller + LB) | `GatewayClass` + `Gateway` + `HTTPRoute` |
 
 ---
 
@@ -24,7 +24,7 @@ Internet
 LoadBalancer  ──▶  Provisions a cloud LB (public IP)
    │
    ▼
-Ingress  ──▶  Routes by host/path (myapp.com/api -> backend, / -> frontend)
+Gateway  ──▶  Routes by host/path/headers (myapp.com/api -> backend, / -> frontend)
    │
    ├──▶  ClusterIP (frontend-service)  ──▶  Frontend Pods
    │
@@ -41,6 +41,7 @@ ExternalName (external-db)  ──▶  DNS redirect to my-db.us-east-1.rds.amazo
 
 - **Default type?** ClusterIP — if you omit `type`, you get ClusterIP.
 - **Cheapest external access?** NodePort — no cloud cost, but limited port range.
-- **Production external access?** LoadBalancer + Ingress — one LB, smart routing.
+- **Production external access?** LoadBalancer + Gateway API — one LB, smart routing.
 - **Talking to outside services?** ExternalName — clean DNS alias, no hardcoding.
 - **StatefulSet databases?** Headless — each Pod gets its own DNS name.
+- **Why Gateway API over Ingress?** Ingress NGINX is EOL March 2026. Gateway API supports more protocols, header-based routing, traffic splitting, and built-in RBAC.
