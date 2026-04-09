@@ -104,5 +104,3 @@ _Goal: Monitoring and wrap-up._
   3.  Pipeline updates K8s manifest and deploys (**CD**).
   4.  App runs on **Kubernetes**.
   5.  **Grafana** dashboard shows the app is alive.
-
-**Would you like a resource list (YouTube channels, documentation links) for any specific week?**
