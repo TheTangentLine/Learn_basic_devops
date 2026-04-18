@@ -111,7 +111,3 @@ Why Helm → installing community charts → `helm create` → sub-charts & `Cha
 - An AWS account with billing alerts set (Weeks 5-6). Almost everything stays in free tier; `terraform destroy` every evening.
 - GitHub account for Week 4 onwards.
 - `kubectl`, `minikube`, `helm` for Weeks 7-8 (installed on the day you need them).
-
-## Contributing Corrections
-
-Spotted a typo or a better explanation? Open an issue or PR. Notes are intentionally conversational — clarity over formality.
