@@ -1,31 +1,56 @@
-**Week 4, Day 24: Building Artifacts**
+# Day 24: Building Artifacts — From Source to Shippable
 
-**The Scenario:** Your tests passed. Great. But you can't deploy "source code" to a server easily. You deploy **artifacts** (binaries, JARs, or Docker Images). We are going to tell GitHub Actions to build a Docker image immediately after the tests pass.
+> **Goal**: Extend the pipeline to produce a deployable Docker image after tests pass, using job dependencies.
+> **Prereqs**: [Day 23](./day23_ci.md) — a green test job; basic Dockerfile knowledge (Week 3).
 
----
+## 1. Scenario & Why It Matters
 
-**Day 24 Mission: The Pipeline Build**
+Tests passing is necessary but not sufficient: you cannot deploy a folder of `.py` files. Real deployment requires an **artifact** — a self-contained, versioned package you can hand to a runtime. Depending on the stack it might be a JAR, a tarball, a zipped bundle, or (most commonly today) a Docker image. Today we build a Docker image as the artifact.
 
-**1. The Dockerfile** In your `devops-lab` repo, create a `Dockerfile` (if you don't have one there yet):
+The key architectural idea is **dependency between jobs**. Jobs in GitHub Actions run in parallel by default; that is great for speed but wrong for "build only if tests pass". The `needs:` keyword converts the DAG from parallel to sequential at specific edges. This gives you a cheap quality gate: if the test job is red, the build job is skipped entirely, saving minutes of runner time and — more importantly — preventing a broken artifact from being tagged with a commit SHA.
 
-```Dockerfile
+Tagging artifacts with `${{ github.sha }}` turns your registry into a time machine. Any deployed image can be traced back to the exact commit that produced it, which is essential for rollbacks, incident response, and audits.
+
+## 2. Concept Deep-Dive
+
+A GitHub Actions workflow is a **DAG of jobs**. Each job is an isolated runner with its own filesystem; artifacts do not flow automatically between them. If job B needs something job A produced, you either (a) rebuild it, (b) persist it to `actions/upload-artifact`, or (c) push it to an external store (registry, S3, etc.).
+
+```mermaid
+flowchart LR
+  A[Push event] --> B[Job: test-code]
+  B --> C{Tests pass?}
+  C -- no --> D[Build skipped, status red]
+  C -- yes --> E[Job: build-image]
+  E --> F[docker build produces image]
+  F --> G[Image tagged with commit SHA]
+```
+
+Two patterns worth knowing:
+
+- **Fan-in**: `needs: [lint, test, typecheck]` — build only after three parallel gates pass.
+- **Fan-out**: one build job feeds multiple deploy jobs for staging/prod/canary.
+
+Today we use the simplest: a two-node chain, `test-code → build-image`.
+
+## 3. Hands-On Mission
+
+Create `Dockerfile`:
+
+```dockerfile
 FROM python:3.9-slim
 WORKDIR /app
 COPY app.py .
 CMD ["python", "-c", "import app; print(app.add(5,5))"]
 ```
 
-**2. The Workflow Update** We will add a "Build" job. Note: Jobs run in parallel by default. We need `needs: test-code` to ensure we only build IF tests pass.
-
 Overwrite `.github/workflows/hello.yml`:
 
-```YAML
+```yaml
 name: CI Pipeline
 
 on: [push]
 
 jobs:
-  # JOB 1: TEST
   test-code:
     runs-on: ubuntu-latest
     steps:
@@ -38,7 +63,6 @@ jobs:
       - name: Run Tests
         run: python -m unittest test_app.py
 
-  # JOB 2: BUILD (Runs only if test-code succeeds)
   build-image:
     needs: test-code
     runs-on: ubuntu-latest
@@ -53,20 +77,32 @@ jobs:
         run: docker images
 ```
 
-**3. The Push** Commit and push the new files.
+Push and watch the graph in the Actions tab show two connected circles.
 
-```bash
-git add .
-git commit -m "Add build step"
-git push origin main
-```
+## 4. Your Task — Answer
 
-**Your Task:**
+**Q:** Click into `build-image` → "Verify Build" and paste the size of the `my-app` image.
 
-1. Go to the "Actions" tab.
-2. You should now see two circles connected by a line (Test -> Build).
-3. Click "build-image" -> "Verify Build".
+**Sample answer**: Around **125 MB**. The image is `python:3.9-slim` (~120 MB) plus a ~1 KB `app.py`, so the final size is dominated by the base image. Switching to `python:3.9-alpine` would drop it to roughly 50 MB at the cost of slower `pip install` for C-extension packages (no prebuilt wheels for musl).
 
-**Paste the size of the image named `my-app` shown in the logs.**(Approximate size is fine).
+## 5. Q&A (Concepts Check)
 
-**Answer:** The image size for `python:3.9-slim` plus your code is typically around **125MB**.
+**Q1. What happens to an image built on the runner after the job ends?**
+The runner VM is destroyed, and with it the image. That's why tomorrow's step is pushing to a registry.
+
+**Q2. Why tag the image with `github.sha` instead of only `latest`?**
+`latest` is mutable — it points at whatever was built most recently. A SHA tag is immutable, which lets you pin deployments, roll back to a known good build, and trace any running container to its source commit.
+
+**Q3. What does `needs: test-code` actually enforce?**
+It adds an edge in the workflow DAG: `build-image` will not even start until `test-code` reports success. If `test-code` fails, `build-image` is marked skipped.
+
+**Q4. Why doesn't the `build-image` job see the Python packages installed by `test-code`?**
+Because each job runs on a fresh, separate runner VM. Nothing is shared implicitly. If you need outputs between jobs, use `actions/upload-artifact` or push to external storage.
+
+**Q5. How could you make the build step faster on repeated pushes?**
+Enable Docker layer caching — either via `actions/cache` on the buildx cache directory or by using `docker/build-push-action` with its built-in cache-from/cache-to support.
+
+## 6. Further Reading
+
+- Dockerfile best practices: [docs.docker.com/develop/develop-images/dockerfile_best-practices](https://docs.docker.com/develop/develop-images/dockerfile_best-practices/)
+- Next: [Day 25 — Container Registry](./day25_container-registry.md)
