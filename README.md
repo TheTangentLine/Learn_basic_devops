@@ -1,4 +1,4 @@
-# Learn Basic DevOps — 8 Weeks, 56 Days
+# Learn Basic DevOps — 9 Weeks, 63 Days
 
 A fast, hands-on path from "can use the terminal" to "can run a production stack on Kubernetes". Every day: a scenario, a concept deep-dive with diagrams, a hands-on mission, a model answer to the task, and an interview-style Q&A.
 
@@ -14,7 +14,7 @@ flowchart LR
   W6["Week 6<br/>AWS<br/>Fundamentals"]
   W7["Week 7<br/>Kubernetes"]
   W8["Week 8<br/>Helm"]
-  W9["Week 9 (planned)<br/>Observability"]
+  W9["Week 9<br/>Observability"]
   W1 --> W2 --> W3 --> W4 --> W5 --> W6 --> W7 --> W8 --> W9
 ```
 
@@ -25,7 +25,7 @@ The skills stack on each other. Week 7's Kubernetes troubleshooting is easy beca
 ```
 Learn_basic_devops/
 ├── Notes/          Daily conceptual notes (this is where you study)
-│   ├── Week1/ ... Week8/
+│   ├── Week1/ ... Week9/
 │   └── Week7/      (thematic subfolders: 00_foundations, 01_getting-started, ...)
 ├── Resources/      Code, configs, manifests, scripts for hands-on work
 │   └── WeekN/
@@ -86,15 +86,9 @@ Code: [`Resources/Week7/`](Resources/Week7/).
 
 Why Helm → installing community charts → `helm create` → sub-charts & `Chart.lock` → upgrade/rollback → templates & logic → production-ready chart challenge. Code: [`Resources/Week8/`](Resources/Week8/).
 
-> Note: in earlier drafts Week 8 was labelled "Observability". It has been re-scoped to Helm, which is the natural follow-up to Week 7. Observability (Prometheus + Grafana + Loki) is planned as a future **Week 9**.
+### [Week 9 — Observability](Notes/Week9/README.md)
 
-### Week 9 — Observability (planned)
-
-- Metrics with Prometheus (installed via Helm — the bridge from Week 8).
-- Visualization with Grafana (dashboards for Node Exporter, cluster state, app metrics).
-- Logging with Loki + Promtail.
-- Alerting with Alertmanager.
-- Capstone: instrument the Week 7 Guestbook, dashboard it, alert on 5xx spikes.
+Prometheus metrics (kube-prometheus-stack Helm install, PromQL, ServiceMonitors) → Grafana dashboards (importing community dashboards, variables, custom panels) → Loki + Promtail log aggregation (LogQL, DaemonSet shipping) → Alertmanager (PrometheusRule CRD, routing tree, Slack/PagerDuty receivers, inhibition, silences) → custom app instrumentation (Counter/Gauge/Histogram, SLO basics) → capstone: instrument the Guestbook, build a RED dashboard, alert on 5xx spikes. Code: [`Resources/Week9/`](Resources/Week9/).
 
 ## How to Use This Repo
 
@@ -110,4 +104,5 @@ Why Helm → installing community charts → `helm create` → sub-charts & `Cha
 - Git, Docker Desktop, and a text editor (VS Code recommended).
 - An AWS account with billing alerts set (Weeks 5-6). Almost everything stays in free tier; `terraform destroy` every evening.
 - GitHub account for Week 4 onwards.
-- `kubectl`, `minikube`, `helm` for Weeks 7-8 (installed on the day you need them).
+- `kubectl`, `minikube`, `helm` for Weeks 7-9 (installed on the day you need them).
+- Week 9: add the Prometheus Community and Grafana Helm repos (`helm repo add prometheus-community https://prometheus-community.github.io/helm-charts && helm repo add grafana https://grafana.github.io/helm-charts`).
